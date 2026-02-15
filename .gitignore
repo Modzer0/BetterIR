@@ -1,0 +1,27 @@
+# Decompiled game source (do not distribute)
+decompiled/
+
+# BepInEx runtime (shipped with game, not ours)
+BepInEx/core/
+BepInEx/cache/
+BepInEx/config/
+BepInEx/patchers/
+BepInEx/LogOutput.log
+
+# Compiled plugin DLLs in the plugins folder (build artifacts)
+BepInEx/plugins/*.dll
+
+# Build output
+AIM9XMod/bin/
+AIM9XMod/obj/
+
+# IDE
+.vs/
+.idea/
+*.user
+*.suo
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
