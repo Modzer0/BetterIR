@@ -18,6 +18,7 @@ namespace AIM9XMod
 
         // Config entries
         public static ConfigEntry<float> OffBoresightAngle;
+        public static ConfigEntry<float> FiringGateAngle;
         public static ConfigEntry<float> MissileMaxTurnRate;
         public static ConfigEntry<float> MissileTorqueMultiplier;
         public static ConfigEntry<float> LOALSearchAngle;
@@ -46,17 +47,20 @@ namespace AIM9XMod
                 "When true, IR missiles without a lock steer toward the player's view direction (center of view marker) " +
                 "while scanning for targets. Only affects player-launched missiles.");
 
-            OffBoresightAngle = Config.Bind("Boresight", "OffBoresightAngle", 180f,
-                "Maximum off-boresight launch angle in degrees. 180° allows rear-hemisphere shots (AIM-9X over-the-shoulder capability).");
+            OffBoresightAngle = Config.Bind("Boresight", "OffBoresightAngle", 90f,
+                "Maximum off-boresight seeker angle in degrees (AIM-9X: 90°). " +
+                "The firing gate allows 180° but launches beyond this angle go out in LOAL mode.");
+            FiringGateAngle = Config.Bind("Boresight", "FiringGateAngle", 180f,
+                "Maximum angle at which IR missiles can be launched. Targets beyond OffBoresightAngle " +
+                "but within this angle launch the missile in LOAL (no-lock) mode.");
 
             MissileMaxTurnRate = Config.Bind("Turning", "MaxTurnRate", 12f,
                 "Maximum turn rate for IR missile PID (vanilla default ~3). Higher = tighter tracking.");
             MissileTorqueMultiplier = Config.Bind("Turning", "TorqueMultiplier", 3f,
                 "Multiplier applied to IR missile torque for enhanced maneuverability");
 
-            LOALSearchAngle = Config.Bind("LOAL", "SearchAngle", 120f,
-                "Seeker search cone half-angle (degrees) when acquiring target after launch. " +
-                "120° covers most of the forward hemisphere for post-turn acquisition.");
+            LOALSearchAngle = Config.Bind("LOAL", "SearchAngle", 90f,
+                "Seeker search cone half-angle (degrees) when acquiring target after launch");
             LOALSearchTime = Config.Bind("LOAL", "SearchTime", 8f,
                 "Maximum time (seconds) the seeker will search for a target after launch before going ballistic");
 

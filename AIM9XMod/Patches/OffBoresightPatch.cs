@@ -4,17 +4,17 @@ using UnityEngine;
 namespace AIM9XMod.Patches
 {
     /// <summary>
-    /// Patches the HUD missile state to allow high off-boresight launches for IR missiles.
-    /// The game uses TargetRequirements.minAlignment to gate whether a missile can fire.
-    /// At 180° this enables full-sphere launches including rear-hemisphere over-the-shoulder
-    /// shots — the missile will turn around and pursue the target behind the firing aircraft.
+    /// Patches the HUD and AI to allow IR missile launches up to 180°.
+    /// The firing gate uses FiringGateAngle (180°) so you can launch at targets behind you.
+    /// The seeker itself is limited to OffBoresightAngle (90°) — launches beyond 90° go
+    /// out in LOAL mode and the missile must turn to acquire the target within its seeker cone.
     /// </summary>
     [HarmonyPatch]
     public static class OffBoresightPatch
     {
         /// <summary>
-        /// Patch HUDMissileState.SetHUDWeaponState to override minAlignment for IR weapons.
-        /// This controls the "OUT OF ARC" HUD indicator and the firing gate.
+        /// Patch HUDMissileState.SetHUDWeaponState to widen the firing gate for IR weapons.
+        /// Uses FiringGateAngle (180°) so the HUD won't show "OUT OF ARC" for rear targets.
         /// </summary>
         [HarmonyPatch(typeof(HUDMissileState), "SetHUDWeaponState")]
         [HarmonyPostfix]
@@ -25,21 +25,18 @@ namespace AIM9XMod.Patches
             var info = weaponStation.WeaponInfo;
             if (info == null) return;
 
-            // Only apply to IR-seeking weapons (minIR > 0 means it needs an IR signature)
             if (info.targetRequirements.minIR <= 0f) return;
 
-            // Override the private minAlignment field via reflection
             var field = AccessTools.Field(typeof(HUDMissileState), "minAlignment");
             if (field != null)
             {
-                field.SetValue(__instance, Plugin.OffBoresightAngle.Value);
-                Plugin.Log.LogDebug($"[HOBS] Set HUD minAlignment to {Plugin.OffBoresightAngle.Value}° for {info.weaponName}");
+                field.SetValue(__instance, Plugin.FiringGateAngle.Value);
             }
         }
 
         /// <summary>
-        /// Patch CombatAI.AnalyzeTarget to allow AI to fire IR missiles at high off-boresight angles.
-        /// The AI checks targetAngle < minAlignment before firing. We widen this for IR weapons.
+        /// Patch CombatAI.AnalyzeTarget to allow AI to fire IR missiles at wider angles.
+        /// AI uses the seeker angle (90°) since AI missiles don't benefit from view-slaving.
         /// </summary>
         [HarmonyPatch(typeof(CombatAI), "AnalyzeTarget")]
         [HarmonyPrefix]
@@ -50,8 +47,6 @@ namespace AIM9XMod.Patches
             var info = weaponStation.WeaponInfo;
             if (info == null || info.targetRequirements.minIR <= 0f) return;
 
-            // Widen the minAlignment on the struct directly
-            // TargetRequirements is a struct, so we modify it on the WeaponInfo reference
             var reqs = info.targetRequirements;
             if (reqs.minAlignment < Plugin.OffBoresightAngle.Value)
             {

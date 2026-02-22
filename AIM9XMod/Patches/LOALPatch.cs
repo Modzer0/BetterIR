@@ -69,7 +69,10 @@ namespace AIM9XMod.Patches
         }
 
         /// <summary>
-        /// Patch IRSeeker.Initialize to register missiles for tracking.
+        /// Patch IRSeeker.Initialize to register missiles for LOAL tracking.
+        /// If the target is beyond the seeker cone (e.g. rear-hemisphere launch),
+        /// force the missile into LOAL mode so it launches without lock and acquires
+        /// after turning.
         /// </summary>
         [HarmonyPatch(typeof(IRSeeker), "Initialize")]
         [HarmonyPostfix]
@@ -77,7 +80,8 @@ namespace AIM9XMod.Patches
         {
             if (!Plugin.EnableLOAL.Value) return;
 
-            var missile = Traverse.Create(__instance).Field("missile").GetValue<Missile>();
+            var t = Traverse.Create(__instance);
+            var missile = t.Field("missile").GetValue<Missile>();
             if (missile == null) return;
 
             int id = missile.GetInstanceID();
@@ -85,6 +89,29 @@ namespace AIM9XMod.Patches
             lastScanTime[id] = 0f;
             peakObservedIR[id] = new Dictionary<PersistentID, float>();
             flareEvadedUnits[id] = new Dictionary<PersistentID, float>();
+
+            // Check if the target is outside the seeker cone at launch.
+            // This handles rear-hemisphere shots: the missile fires forward,
+            // enters LOAL, view-slaves toward the target, and locks on once
+            // the target enters the seeker's 90° cone.
+            var targetUnit = t.Field("targetUnit").GetValue<Unit>();
+            var irTarget = t.Field("IRTarget").GetValue<IRSource>();
+            if (targetUnit != null && irTarget != null && !irTarget.flare)
+            {
+                Vector3 toTarget = targetUnit.transform.position - missile.transform.position;
+                float angle = Vector3.Angle(missile.transform.forward, toTarget);
+                if (angle > Plugin.OffBoresightAngle.Value)
+                {
+                    // Target is outside seeker cone — force LOAL mode
+                    t.Field("IRTarget").SetValue(null);
+                    t.Field("targetUnit").SetValue(null);
+                    t.Field("achievedLock").SetValue(false);
+
+                    Plugin.Log.LogDebug(
+                        $"[LOAL] Rear-hemisphere launch: target at {angle:F0}° off-bore, " +
+                        $"exceeds {Plugin.OffBoresightAngle.Value}° seeker cone. Entering LOAL.");
+                }
+            }
         }
 
         /// <summary>
