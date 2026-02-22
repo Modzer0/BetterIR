@@ -11,7 +11,7 @@ namespace AIM9XMod
     {
         public const string PluginGUID = "com.modder.aim9xmod";
         public const string PluginName = "AIM-9X IR Missile Overhaul";
-        public const string PluginVersion = "0.5.0";
+        public const string PluginVersion = "0.5.1";
 
         internal static ManualLogSource Log;
         internal static Harmony HarmonyInstance;
