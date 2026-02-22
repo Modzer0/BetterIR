@@ -46,16 +46,17 @@ namespace AIM9XMod
                 "When true, IR missiles without a lock steer toward the player's view direction (center of view marker) " +
                 "while scanning for targets. Only affects player-launched missiles.");
 
-            OffBoresightAngle = Config.Bind("Boresight", "OffBoresightAngle", 90f,
-                "Maximum off-boresight launch angle in degrees (AIM-9X: 90°)");
+            OffBoresightAngle = Config.Bind("Boresight", "OffBoresightAngle", 180f,
+                "Maximum off-boresight launch angle in degrees. 180° allows rear-hemisphere shots (AIM-9X over-the-shoulder capability).");
 
             MissileMaxTurnRate = Config.Bind("Turning", "MaxTurnRate", 12f,
                 "Maximum turn rate for IR missile PID (vanilla default ~3). Higher = tighter tracking.");
             MissileTorqueMultiplier = Config.Bind("Turning", "TorqueMultiplier", 3f,
                 "Multiplier applied to IR missile torque for enhanced maneuverability");
 
-            LOALSearchAngle = Config.Bind("LOAL", "SearchAngle", 90f,
-                "Seeker search cone angle (degrees) when acquiring target after launch");
+            LOALSearchAngle = Config.Bind("LOAL", "SearchAngle", 120f,
+                "Seeker search cone half-angle (degrees) when acquiring target after launch. " +
+                "120° covers most of the forward hemisphere for post-turn acquisition.");
             LOALSearchTime = Config.Bind("LOAL", "SearchTime", 8f,
                 "Maximum time (seconds) the seeker will search for a target after launch before going ballistic");
 

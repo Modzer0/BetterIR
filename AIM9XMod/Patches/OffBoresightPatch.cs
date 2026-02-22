@@ -6,7 +6,8 @@ namespace AIM9XMod.Patches
     /// <summary>
     /// Patches the HUD missile state to allow high off-boresight launches for IR missiles.
     /// The game uses TargetRequirements.minAlignment to gate whether a missile can fire.
-    /// We widen this to 90° for any weapon with minIR > 0 (i.e., IR-seeking weapons).
+    /// At 180° this enables full-sphere launches including rear-hemisphere over-the-shoulder
+    /// shots — the missile will turn around and pursue the target behind the firing aircraft.
     /// </summary>
     [HarmonyPatch]
     public static class OffBoresightPatch
