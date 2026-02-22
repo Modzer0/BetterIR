@@ -15,13 +15,12 @@ namespace AIM9XMod.Patches
     /// cone during flight. If it finds one with LOS and within the cone, it acquires
     /// lock and begins tracking — just like the AIM-9X Block II datalink capability.
     /// 
-    /// Flare evasion memory: while tracking a target, the seeker continuously records
-    /// the highest IR intensity it has ever observed from that unit. When the target
-    /// successfully decoys the seeker with flares, that peak value is stored. The LOAL
-    /// scan will NOT reacquire that unit unless its current IR signature exceeds the
-    /// peak AND the unit is within the seeker cone. This means reducing throttle after
-    /// flaring keeps you safe — the missile only relocks if you burn hotter than the
-    /// hottest it ever saw you.
+    /// Flare evasion memory: when a target successfully decoys the seeker with flares,
+    /// the seeker snapshots the aircraft's IR output at that moment. The LOAL scan will
+    /// NOT reacquire that unit unless its current IR signature exceeds the value it had
+    /// when it flared AND the unit is within the seeker cone. This means if you flare
+    /// and maintain or reduce throttle, the missile stays off you. It only relocks if
+    /// you push the throttle higher than where it was when you popped flares.
     /// </summary>
     [HarmonyPatch]
     public static class LOALPatch
@@ -30,13 +29,9 @@ namespace AIM9XMod.Patches
         private static readonly Dictionary<int, float> loalSearchStart = new Dictionary<int, float>();
         private static readonly Dictionary<int, float> lastScanTime = new Dictionary<int, float>();
 
-        // Peak observed IR intensity per unit, tracked while the seeker has active lock.
-        // Key: missile instance ID -> Dictionary of (unit PersistentID -> peak IR intensity)
-        private static readonly Dictionary<int, Dictionary<PersistentID, float>> peakObservedIR
-            = new Dictionary<int, Dictionary<PersistentID, float>>();
-
         // Units that successfully evaded each missile via flares.
-        // Key: missile instance ID -> Dictionary of (evaded unit PersistentID -> peak IR at evasion)
+        // Stores the aircraft's actual IR output at the moment it decoyed the seeker.
+        // Key: missile instance ID -> Dictionary of (evaded unit PersistentID -> aircraft IR at evasion)
         private static readonly Dictionary<int, Dictionary<PersistentID, float>> flareEvadedUnits
             = new Dictionary<int, Dictionary<PersistentID, float>>();
 
@@ -62,7 +57,6 @@ namespace AIM9XMod.Patches
         {
             loalSearchStart.Remove(id);
             lastScanTime.Remove(id);
-            peakObservedIR.Remove(id);
             flareEvadedUnits.Remove(id);
         }
 
@@ -81,14 +75,12 @@ namespace AIM9XMod.Patches
             int id = missile.GetInstanceID();
             loalSearchStart[id] = Time.timeSinceLevelLoad;
             lastScanTime[id] = 0f;
-            peakObservedIR[id] = new Dictionary<PersistentID, float>();
             flareEvadedUnits[id] = new Dictionary<PersistentID, float>();
         }
 
         /// <summary>
-        /// Patch IRSeeker.Seek to:
-        /// 1. While tracking (has lock): continuously update peak observed IR for the target.
-        /// 2. While searching (no lock): scan for new targets, respecting flare evasion memory.
+        /// Patch IRSeeker.Seek to implement LOAL scanning when the seeker has no lock.
+        /// Scans for targets within the search cone, respecting flare evasion memory.
         /// </summary>
         [HarmonyPatch(typeof(IRSeeker), "Seek")]
         [HarmonyPostfix]
@@ -104,20 +96,9 @@ namespace AIM9XMod.Patches
             var irTarget = t.Field("IRTarget").GetValue<IRSource>();
             var targetUnit = t.Field("targetUnit").GetValue<Unit>();
 
-            // --- Phase 1: Peak IR tracking while we have active lock ---
+            // If we have active lock, nothing to do — vanilla handles tracking.
             if (irTarget != null && irTarget.transform != null && targetUnit != null)
-            {
-                Dictionary<PersistentID, float> peaks;
-                if (peakObservedIR.TryGetValue(id, out peaks))
-                {
-                    float currentIR = GetTotalIRIntensity(targetUnit);
-                    PersistentID uid = targetUnit.persistentID;
-                    float existing;
-                    if (!peaks.TryGetValue(uid, out existing) || currentIR > existing)
-                        peaks[uid] = currentIR;
-                }
-                return; // Have lock, no need to scan
-            }
+                return;
 
             // --- Phase 2: LOAL scanning when we have no lock ---
             bool guidance = t.Field("guidance").GetValue<bool>();
@@ -169,16 +150,16 @@ namespace AIM9XMod.Patches
                 if (angle > searchAngle) continue;
 
                 // --- Flare evasion memory check ---
-                // Only allow relock if current IR exceeds the peak we ever
-                // observed while tracking this unit, AND it's in the cone.
+                // Only allow relock if the aircraft's current IR output exceeds
+                // what it was putting out when it successfully flared.
                 if (evadedLookup != null)
                 {
-                    float peakIR;
-                    if (evadedLookup.TryGetValue(unit.persistentID, out peakIR))
+                    float evasionIR;
+                    if (evadedLookup.TryGetValue(unit.persistentID, out evasionIR))
                     {
                         float currentIR = GetTotalIRIntensity(unit);
-                        if (currentIR <= peakIR)
-                            continue; // Not hotter than peak — skip
+                        if (currentIR <= evasionIR)
+                            continue; // Aircraft hasn't increased throttle — skip
                     }
                 }
 
@@ -285,33 +266,27 @@ namespace AIM9XMod.Patches
             {
                 int missileId = missile.GetInstanceID();
 
-                // Look up the peak IR we observed while tracking this unit
-                float peakIR = 0f;
-                Dictionary<PersistentID, float> peaks;
-                if (peakObservedIR.TryGetValue(missileId, out peaks))
-                    peaks.TryGetValue(__state.unitId, out peakIR);
+                // Snapshot the aircraft's actual IR output right now — this is
+                // what it was putting out when it successfully decoyed the seeker.
+                float aircraftIR = 0f;
+                Unit evadedUnit;
+                if (UnitRegistry.TryGetUnit(new PersistentID?(__state.unitId), out evadedUnit))
+                    aircraftIR = GetTotalIRIntensity(evadedUnit);
 
-                // Fall back to current IR if we somehow never recorded a peak
-                if (peakIR <= 0f)
-                {
-                    Unit evadedUnit;
-                    if (UnitRegistry.TryGetUnit(new PersistentID?(__state.unitId), out evadedUnit))
-                        peakIR = GetTotalIRIntensity(evadedUnit);
-                }
-
-                // Store the peak as the relock threshold
+                // Store as the relock threshold — missile won't reacquire unless
+                // the aircraft's IR output exceeds this value (i.e., increases throttle)
                 if (!flareEvadedUnits.ContainsKey(missileId))
                     flareEvadedUnits[missileId] = new Dictionary<PersistentID, float>();
 
-                flareEvadedUnits[missileId][__state.unitId] = peakIR;
+                flareEvadedUnits[missileId][__state.unitId] = aircraftIR;
 
                 // Re-enter LOAL search mode
                 if (!loalSearchStart.ContainsKey(missileId))
                     loalSearchStart[missileId] = Time.timeSinceLevelLoad;
 
                 Plugin.Log.LogDebug(
-                    $"[LOAL] Flare evasion: unit {__state.unitId}, peak IR recorded: {peakIR:F2}. " +
-                    $"Relock requires IR > {peakIR:F2} while in seeker cone.");
+                    $"[LOAL] Flare evasion: unit {__state.unitId}, aircraft IR at evasion: {aircraftIR:F2}. " +
+                    $"Relock requires aircraft IR > {aircraftIR:F2} while in seeker cone.");
             }
         }
 
