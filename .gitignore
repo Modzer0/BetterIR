@@ -1,6 +1,9 @@
 # Decompiled game source (do not distribute)
 decompiled/
 
+# Decompiled QoL mod (do not distribute)
+decompiled qol/
+
 # BepInEx runtime (shipped with game, not ours)
 BepInEx/core/
 BepInEx/cache/
