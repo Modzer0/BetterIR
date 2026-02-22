@@ -123,7 +123,7 @@ namespace AIM9XMod.Patches
                 return;
             }
 
-            // --- Phase 2: LOAL scanning when we have no lock ---
+            // --- LOAL scanning when we have no lock ---
             bool guidance = t.Field("guidance").GetValue<bool>();
             if (!guidance) return;
 
@@ -131,6 +131,29 @@ namespace AIM9XMod.Patches
 
             float searchElapsed = Time.timeSinceLevelLoad - loalSearchStart[id];
             if (searchElapsed > Plugin.LOALSearchTime.Value) return;
+
+            // Steer the missile toward the player's view direction (center of view marker)
+            // so it flies where the player is looking while scanning for targets.
+            // Only applies to player-launched missiles; AI missiles keep their drift heading.
+            if (Plugin.EnableViewSlaving.Value && missile.owner != null)
+            {
+                try
+                {
+                    var combatHUD = SceneSingleton<CombatHUD>.i;
+                    if (combatHUD != null && combatHUD.aircraft != null
+                        && combatHUD.aircraft.persistentID == missile.owner.persistentID)
+                    {
+                        var cam = SceneSingleton<CameraStateManager>.i;
+                        if (cam != null)
+                        {
+                            GlobalPosition viewAimpoint = missile.GlobalPosition()
+                                + cam.transform.forward * 10000f;
+                            missile.SetAimpoint(viewAimpoint, Vector3.zero);
+                        }
+                    }
+                }
+                catch (Exception) { /* SceneSingleton not available */ }
+            }
 
             // Throttle scanning to every 0.25s
             if (!lastScanTime.ContainsKey(id)) lastScanTime[id] = 0f;

@@ -26,6 +26,7 @@ namespace AIM9XMod
         public static ConfigEntry<bool> EnableHighOffBoresight;
         public static ConfigEntry<bool> EnableEnhancedTurning;
         public static ConfigEntry<bool> UsePeakIRThreshold;
+        public static ConfigEntry<bool> EnableViewSlaving;
 
         private void Awake()
         {
@@ -41,6 +42,9 @@ namespace AIM9XMod
             UsePeakIRThreshold = Config.Bind("Features", "UsePeakIRThreshold", false,
                 "When true, flare evasion threshold uses the highest IR the missile ever observed while tracking. " +
                 "When false (default), uses the aircraft's IR output at the moment of flare evasion.");
+            EnableViewSlaving = Config.Bind("Features", "EnableViewSlaving", true,
+                "When true, IR missiles without a lock steer toward the player's view direction (center of view marker) " +
+                "while scanning for targets. Only affects player-launched missiles.");
 
             OffBoresightAngle = Config.Bind("Boresight", "OffBoresightAngle", 90f,
                 "Maximum off-boresight launch angle in degrees (AIM-9X: 90°)");
