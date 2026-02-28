@@ -6,7 +6,7 @@ using UnityEngine;
 namespace AIM9XMod.Patches
 {
     /// <summary>
-    /// Implements Lock-On After Launch (LOAL) for IR missiles.
+    /// Implements Lock-On After Launch (LOAL) for IR missiles (server-side).
     /// 
     /// In vanilla, if an IR missile loses lock or is launched without one, it drifts
     /// on its last known heading with accumulating error until self-destruct.
@@ -15,12 +15,15 @@ namespace AIM9XMod.Patches
     /// cone during flight. If it finds one with LOS and within the cone, it acquires
     /// lock and begins tracking — just like the AIM-9X Block II datalink capability.
     /// 
+    /// Target-directed steering: when a missile is in LOAL mode and was launched with
+    /// a designated target, the server steers the missile toward the target's last known
+    /// position. This replaces client-side view-slaving and works for all players on
+    /// the server without requiring the mod on clients.
+    /// 
     /// Flare evasion memory: when a target successfully decoys the seeker with flares,
     /// the seeker records a relock threshold. By default, this is the aircraft's IR
-    /// output at the moment of evasion — so maintaining or reducing throttle keeps you
-    /// safe. With UsePeakIRThreshold enabled, the threshold is instead the highest IR
-    /// the missile ever observed while tracking that unit — a stricter standard that
-    /// requires the aircraft to exceed its historical peak to be reacquired.
+    /// output at the moment of evasion. With UsePeakIRThreshold enabled, the threshold
+    /// is the highest IR the missile ever observed while tracking that unit.
     /// </summary>
     [HarmonyPatch]
     public static class LOALPatch
@@ -41,6 +44,12 @@ namespace AIM9XMod.Patches
         // Key: missile instance ID -> Dictionary of (evaded unit PersistentID -> IR threshold)
         private static readonly Dictionary<int, Dictionary<PersistentID, float>> flareEvadedUnits
             = new Dictionary<int, Dictionary<PersistentID, float>>();
+
+        // The designated target at launch time, used for target-directed LOAL steering.
+        // The server steers the missile toward this target's known position when in LOAL mode.
+        // Key: missile instance ID -> designated target unit
+        private static readonly Dictionary<int, Unit> designatedTarget
+            = new Dictionary<int, Unit>();
 
         /// <summary>
         /// Get the total IR intensity of a unit by summing all non-flare IR sources.
@@ -66,6 +75,7 @@ namespace AIM9XMod.Patches
             lastScanTime.Remove(id);
             peakObservedIR.Remove(id);
             flareEvadedUnits.Remove(id);
+            designatedTarget.Remove(id);
         }
 
         /// <summary>
@@ -92,10 +102,16 @@ namespace AIM9XMod.Patches
 
             // Check if the target is outside the seeker cone at launch.
             // This handles rear-hemisphere shots: the missile fires forward,
-            // enters LOAL, view-slaves toward the target, and locks on once
-            // the target enters the seeker's 90° cone.
+            // enters LOAL, steers toward the target's known position, and locks
+            // on once the target enters the seeker's 90° cone.
             var targetUnit = t.Field("targetUnit").GetValue<Unit>();
             var irTarget = t.Field("IRTarget").GetValue<IRSource>();
+
+            // Store the designated target for target-directed LOAL steering.
+            // Even if we have lock now, we keep this in case we lose lock later.
+            if (targetUnit != null)
+                designatedTarget[id] = targetUnit;
+
             if (targetUnit != null && irTarget != null && !irTarget.flare)
             {
                 Vector3 toTarget = targetUnit.transform.position - missile.transform.position;
@@ -159,27 +175,21 @@ namespace AIM9XMod.Patches
             float searchElapsed = Time.timeSinceLevelLoad - loalSearchStart[id];
             if (searchElapsed > Plugin.LOALSearchTime.Value) return;
 
-            // Steer the missile toward the player's view direction (center of view marker)
-            // so it flies where the player is looking while scanning for targets.
-            // Only applies to player-launched missiles; AI missiles keep their drift heading.
-            if (Plugin.EnableViewSlaving.Value && missile.owner != null)
+            // Steer the missile toward the designated target's known position.
+            // This is the server-side equivalent of view-slaving — the server knows
+            // the target from the launch command and steers the missile toward it
+            // during LOAL, so it works for all players without client-side mod.
+            if (Plugin.EnableTargetDirectedLOAL.Value)
             {
-                try
+                Unit designatedUnit;
+                if (designatedTarget.TryGetValue(id, out designatedUnit)
+                    && designatedUnit != null && !designatedUnit.disabled)
                 {
-                    var combatHUD = SceneSingleton<CombatHUD>.i;
-                    if (combatHUD != null && combatHUD.aircraft != null
-                        && combatHUD.aircraft.persistentID == missile.owner.persistentID)
-                    {
-                        var cam = SceneSingleton<CameraStateManager>.i;
-                        if (cam != null)
-                        {
-                            GlobalPosition viewAimpoint = missile.GlobalPosition()
-                                + cam.transform.forward * 10000f;
-                            missile.SetAimpoint(viewAimpoint, Vector3.zero);
-                        }
-                    }
+                    GlobalPosition targetPos = designatedUnit.GlobalPosition();
+                    Vector3 targetVel = designatedUnit.rb != null
+                        ? designatedUnit.rb.velocity : Vector3.zero;
+                    missile.SetAimpoint(targetPos, targetVel);
                 }
-                catch (Exception) { /* SceneSingleton not available */ }
             }
 
             // Throttle scanning to every 0.25s
