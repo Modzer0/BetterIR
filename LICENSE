@@ -673,3 +673,17 @@ the library.  If this is what you want to do, use the GNU Lesser General
 Public License instead of this License.  But first, please read
 <https://www.gnu.org/licenses/why-not-lgpl.html>.
 
+
+ADDENDUM — GEOGRAPHIC RESTRICTION
+
+Due to the ambiguity surrounding the full definition of "developer" under
+California Assembly Bill 1043 (AB 1043), and given that GitHub serves as
+the distribution mechanism for this software, persons located within the
+State of California are not granted license to use, copy, modify, or
+distribute this game modification. This restriction applies regardless of
+any other terms in the GNU General Public License v3.0 above.
+
+If and when AB 1043 is amended or clarified such that its provisions are
+no longer ambiguous with respect to game modification developers and open
+source distribution platforms, this addendum may be revised or removed at
+the sole discretion of the copyright holder.
